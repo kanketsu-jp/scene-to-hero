@@ -1,0 +1,15 @@
+.env
+.env.*
+.temp/
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+*.mp4
+*.mov
+*.webm
+logs/
+.DS_Store

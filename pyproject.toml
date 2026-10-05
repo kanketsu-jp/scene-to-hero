@@ -1,0 +1,21 @@
+[project]
+name = "scene-to-hero"
+version = "0.1.0"
+description = "A small toolkit for turning scene stills into a short hero video."
+requires-python = ">=3.12"
+license = { text = "MIT" }
+readme = "README.md"
+dependencies = ["numpy", "Pillow", "scipy", "opencv-python-headless"]
+
+[project.optional-dependencies]
+dev = ["pytest"]
+
+[project.scripts]
+scene-to-hero = "scene_to_hero.cli:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["scene_to_hero"]
