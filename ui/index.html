@@ -1,14 +1,248 @@
 <!doctype html>
-<html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>scene-to-hero</title>
-<style>body{font:16px system-ui,sans-serif;max-width:1100px;margin:2rem auto;padding:0 1rem;color:#222;background:#f7f7f7}h1{margin-bottom:.2rem}.hint{color:#555}.toolbar{display:flex;gap:1rem;flex-wrap:wrap;margin:1rem 0}button{padding:.6rem 1rem}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:1rem}.card{background:white;border:2px solid #ddd;border-radius:12px;padding:1rem;cursor:grab}.card.drag{opacity:.5}.thumb{height:150px;background:#eee;display:grid;place-items:center;margin-bottom:.7rem;overflow:hidden}.thumb img{max-width:100%;max-height:100%}.error{color:#a00;min-height:1.4rem}</style></head>
-<body><h1>scene-to-hero</h1><p class="hint">ローカルで <code>python3 -m http.server</code> をリポジトリ直下または ui/ で起動し、ui/index.html を開いてください。project.json を選択して読み込むこともできます。</p>
-<div class="toolbar"><input id="json" type="file" accept=".json,application/json"><input id="images" type="file" accept="image/png,image/jpeg,image/webp" multiple><button id="download">JSON をダウンロード</button></div><p id="error" class="error"></p><main id="grid" class="grid"></main>
-<script>
-const state={project:null,files:new Map()}; const grid=document.querySelector('#grid'), error=document.querySelector('#error');
-function validate(p){if(!p||!/^[A-Za-z0-9._-]+$/.test(p.name))throw Error('プロジェクト名が不正です');const ids=p.scenes.map(s=>s.id),orders=p.scenes.map(s=>s.order);if(new Set(ids).size!==ids.length||new Set(orders).size!==orders.length)throw Error('id/order は重複できません');if(p.scenes.filter(s=>s.role==='final').length>1)throw Error('final は1枚までです');p.scenes.forEach(s=>{if(s.importance<1||s.importance>5)throw Error('重要度は1〜5です');if(!['final','reference'].includes(s.role))throw Error('role が不正です')})}
-function render(){grid.innerHTML='';if(!state.project)return;state.project.scenes.sort((a,b)=>a.order-b.order).forEach((s,i)=>{s.order=i;const card=document.createElement('article');card.className='card';card.draggable=true;card.dataset.id=s.id;const box=document.createElement('div');box.className='thumb';const file=state.files.get(s.path);if(file){const img=document.createElement('img');img.src=URL.createObjectURL(file);box.append(img)}else{box.textContent='画像プレビューなし'}card.append(box);const title=document.createElement('strong');title.textContent=s.id+' · '+s.path;card.append(title);const label=document.createElement('label');label.textContent='重要度 ';const select=document.createElement('select');for(let n=1;n<=5;n++){const o=new Option(n,n,s.importance===n,s.importance===n);select.append(o)}select.onchange=()=>s.importance=Number(select.value);label.append(select);card.append(document.createElement('br'),label);const final=document.createElement('label');const radio=document.createElement('input');radio.type='radio';radio.name='final';radio.checked=s.role==='final';radio.onchange=()=>{state.project.scenes.forEach(x=>x.role=x===s?'final':'reference');render()};final.append(radio,' final');card.append(document.createElement('br'),final);card.ondragstart=e=>{e.dataTransfer.setData('text/plain',s.id);card.classList.add('drag')};card.ondragend=()=>card.classList.remove('drag');card.ondragover=e=>e.preventDefault();card.ondrop=e=>{e.preventDefault();const from=state.project.scenes.findIndex(x=>x.id===e.dataTransfer.getData('text/plain'));const to=state.project.scenes.findIndex(x=>x.id===s.id);const [moved]=state.project.scenes.splice(from,1);state.project.scenes.splice(to,0,moved);render()};grid.append(card)})}
-document.querySelector('#json').onchange=async e=>{try{state.project=JSON.parse(await e.target.files[0].text());validate(state.project);render();error.textContent=''}catch(x){error.textContent=x.message}};
-document.querySelector('#images').onchange=e=>{for(const f of e.target.files)state.files.set(f.name,f);render()};
-document.querySelector('#download').onclick=()=>{try{validate(state.project);const blob=new Blob([JSON.stringify(state.project,null,2)+'\n'],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(blob);a.download='project.json';a.click();error.textContent=''}catch(x){error.textContent=x.message}};
-const query=new URLSearchParams(location.search).get('project');if(query)fetch(query).then(r=>r.json()).then(p=>{state.project=p;validate(p);render()}).catch(e=>error.textContent=e.message);
-</script></body></html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Scene to Hero</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        --bg: #f5f7fa;
+        --panel: #fff;
+        --text: #17202a;
+        --muted: #52606d;
+        --line: #cbd2d9;
+        --accent: #155eef;
+        --error: #b42318;
+        --warn: #9a6700;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --bg: #111827;
+          --panel: #1f2937;
+          --text: #f3f4f6;
+          --muted: #c4cdd5;
+          --line: #4b5563;
+          --accent: #8db4ff;
+          --error: #ffb4ab;
+          --warn: #f5c36a;
+        }
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; padding: 1.5rem; min-height: 100vh; background: var(--bg); color: var(--text); font: 16px/1.45 system-ui, sans-serif; }
+      main, .header { max-width: 1100px; margin: auto; }
+      .header { display: flex; justify-content: space-between; gap: 1rem; align-items: end; flex-wrap: wrap; }
+      .hint { color: var(--muted); }
+      .toolbar { display: flex; gap: .75rem; flex-wrap: wrap; align-items: center; margin: 1rem 0; }
+      .messages { min-height: 2rem; }
+      .error { color: var(--error); }
+      .warning { color: var(--warn); }
+      button, select, input, textarea { font: inherit; }
+      button { padding: .45rem .7rem; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); color: var(--text); cursor: pointer; }
+      button:disabled { opacity: .5; cursor: not-allowed; }
+      .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr)); gap: 1rem; }
+      .card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 1rem; }
+      .card.dragging { opacity: .5; }
+      .card.drop-target { outline: 3px solid var(--accent); }
+      .thumb { height: 150px; display: grid; place-items: center; background: var(--bg); margin-bottom: .75rem; color: var(--muted); overflow: hidden; }
+      .thumb img { width: 100%; height: 100%; object-fit: contain; }
+      .meta { color: var(--muted); overflow-wrap: anywhere; }
+      .controls { display: flex; gap: .5rem; flex-wrap: wrap; align-items: center; margin-top: .75rem; }
+      .note { width: 100%; min-height: 4rem; margin-top: .5rem; background: var(--panel); color: var(--text); border: 1px solid var(--line); }
+    </style>
+  </head>
+  <body>
+    <header class="header">
+      <div>
+        <h1>Scene to Hero</h1>
+        <p class="hint">Arrange scenes, choose the final image, and download the updated project.</p>
+      </div>
+    </header>
+    <main>
+      <div class="toolbar">
+        <label>Project <input id="json" type="file" accept=".json,application/json"></label>
+        <label>Images <input id="images" type="file" multiple accept="image/*"></label>
+        <button id="download" type="button" disabled>Download project.json</button>
+      </div>
+      <p class="hint">After downloading, save the file over the project's project.json.</p>
+      <section id="messages" class="messages" aria-live="polite"></section>
+      <section id="grid" class="grid" aria-label="Scenes"></section>
+    </main>
+    <script src="logic.js"></script>
+    <script>
+      (() => {
+        const U = globalThis.SceneUI;
+        const state = { project: null, scenes: [], files: [], urls: [] };
+        const grid = document.querySelector('#grid');
+        const messages = document.querySelector('#messages');
+        const download = document.querySelector('#download');
+
+        function show() {
+          messages.textContent = '';
+          if (!state.project) {
+            download.disabled = true;
+            return;
+          }
+          const validation = U.validateProject(state.project);
+          if (validation.errors.length) {
+            const error = document.createElement('div');
+            error.className = 'error';
+            error.textContent = validation.errors.join(' ');
+            messages.append(error);
+          }
+          if (validation.warnings.length) {
+            const warning = document.createElement('div');
+            warning.className = 'warning';
+            warning.textContent = validation.warnings.join(' ');
+            messages.append(warning);
+          }
+          download.disabled = validation.errors.length > 0;
+        }
+
+        function imageFor(scene) {
+          const projectUrl = new URLSearchParams(location.search).get('project');
+          if (projectUrl) return U.resolveSceneUrl(projectUrl, scene.path, location.href);
+          const file = U.matchImageFiles([scene], state.files)[scene.id];
+          if (!file) return null;
+          const url = URL.createObjectURL(file);
+          state.urls.push(url);
+          return url;
+        }
+
+        function render() {
+          state.urls.splice(0).forEach(URL.revokeObjectURL);
+          grid.textContent = '';
+          if (!state.project) {
+            show();
+            return;
+          }
+          state.scenes = U.sortedScenes(state.project.scenes);
+          state.scenes.forEach((scene, index) => {
+            const card = document.createElement('article');
+            card.className = 'card';
+            card.draggable = true;
+            card.dataset.id = scene.id;
+            card.ondragstart = (event) => { event.dataTransfer.setData('text/plain', scene.id); card.classList.add('dragging'); };
+            card.ondragend = () => card.classList.remove('dragging');
+            card.ondragover = (event) => { event.preventDefault(); card.classList.add('drop-target'); };
+            card.ondragleave = () => card.classList.remove('drop-target');
+            card.ondrop = (event) => {
+              event.preventDefault();
+              card.classList.remove('drop-target');
+              state.scenes = U.moveScene(state.scenes, state.scenes.findIndex((item) => item.id === event.dataTransfer.getData('text/plain')), index);
+              state.project.scenes = state.scenes;
+              render();
+            };
+
+            const thumb = document.createElement('div');
+            thumb.className = 'thumb';
+            const source = imageFor(scene);
+            if (source) {
+              const image = document.createElement('img');
+              image.src = source;
+              image.alt = scene.id;
+              thumb.append(image);
+            } else {
+              thumb.textContent = 'no preview';
+            }
+            card.append(thumb);
+
+            const title = document.createElement('strong');
+            title.textContent = scene.id;
+            card.append(title);
+            const meta = document.createElement('div');
+            meta.className = 'meta';
+            meta.textContent = `${scene.path} \u00b7 order ${scene.order}`;
+            card.append(meta);
+
+            const controls = document.createElement('div');
+            controls.className = 'controls';
+            const up = document.createElement('button');
+            up.type = 'button';
+            up.textContent = 'Up';
+            up.setAttribute('aria-label', `Move ${scene.id} up`);
+            up.disabled = index === 0;
+            up.onclick = () => { state.scenes = U.moveSceneBy(state.scenes, scene.id, -1); state.project.scenes = state.scenes; render(); };
+            const down = document.createElement('button');
+            down.type = 'button';
+            down.textContent = 'Down';
+            down.setAttribute('aria-label', `Move ${scene.id} down`);
+            down.disabled = index === state.scenes.length - 1;
+            down.onclick = () => { state.scenes = U.moveSceneBy(state.scenes, scene.id, 1); state.project.scenes = state.scenes; render(); };
+            controls.append(up, down);
+
+            const importanceLabel = document.createElement('label');
+            importanceLabel.textContent = ' Importance ';
+            const select = document.createElement('select');
+            for (let number = 1; number <= 5; number += 1) {
+              const option = document.createElement('option');
+              option.value = number;
+              option.textContent = number;
+              option.selected = scene.importance === number;
+              select.append(option);
+            }
+            select.onchange = () => { state.scenes = U.setImportance(state.scenes, scene.id, Number(select.value)); state.project.scenes = state.scenes; render(); };
+            importanceLabel.append(select);
+            controls.append(importanceLabel);
+
+            const finalLabel = document.createElement('label');
+            const radio = document.createElement('input');
+            radio.type = 'radio';
+            radio.name = 'final';
+            radio.checked = scene.role === 'final';
+            radio.setAttribute('aria-label', `Set ${scene.id} as final`);
+            radio.onchange = () => { state.scenes = U.setFinal(state.scenes, scene.id); state.project.scenes = state.scenes; render(); };
+            finalLabel.append(radio, ' Final');
+            controls.append(finalLabel);
+            card.append(controls);
+
+            const note = document.createElement('textarea');
+            note.className = 'note';
+            note.value = scene.note || '';
+            note.placeholder = 'Note';
+            note.setAttribute('aria-label', `Note for ${scene.id}`);
+            note.oninput = () => { state.scenes = U.setNote(state.scenes, scene.id, note.value); state.project.scenes = state.scenes; show(); };
+            card.append(note);
+            grid.append(card);
+          });
+          show();
+        }
+
+        document.querySelector('#json').onchange = async (event) => {
+          try {
+            state.project = U.parseProject(await event.target.files[0].text());
+            state.scenes = state.project.scenes;
+            render();
+          } catch (error) {
+            messages.textContent = error.message;
+            download.disabled = true;
+          }
+        };
+        document.querySelector('#images').onchange = (event) => { state.files = Array.from(event.target.files); render(); };
+        download.onclick = () => {
+          const blob = new Blob([U.serializeProject(state.project, state.scenes)], { type: 'application/json' });
+          const link = document.createElement('a');
+          link.href = URL.createObjectURL(blob);
+          link.download = 'project.json';
+          link.click();
+          setTimeout(() => URL.revokeObjectURL(link.href), 0);
+        };
+
+        const projectUrl = new URLSearchParams(location.search).get('project');
+        if (projectUrl) {
+          fetch(projectUrl).then((response) => {
+            if (!response.ok) throw Error(`Could not load project: ${response.status}`);
+            return response.text();
+          }).then((text) => {
+            state.project = U.parseProject(text);
+            state.scenes = state.project.scenes;
+            render();
+          }).catch((error) => {
+            messages.textContent = error.message;
+            download.disabled = true;
+          });
+        }
+      })();
+    </script>
+  </body>
+</html>

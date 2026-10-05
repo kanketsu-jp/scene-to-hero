@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import math
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 
@@ -19,7 +19,7 @@ def billed_seconds(duration: float) -> int:
 
 
 def _now() -> str:
-    return datetime.now(timezone.utc).isoformat()
+    return datetime.now(UTC).isoformat()
 
 
 class Budget:
@@ -57,29 +57,56 @@ class Budget:
         with self.log_path.open("a", encoding="utf-8") as stream:
             stream.write(json.dumps(row, ensure_ascii=False, separators=(",", ":")) + "\n")
 
-    def reserve(self, step: str, endpoint: str, unit_price: float, unit: str,
-                quantity: float, attempt: int = 1) -> tuple[bool, float, float]:
+    def reserve(
+        self,
+        step: str,
+        endpoint: str,
+        unit_price: float,
+        unit: str,
+        quantity: float,
+        attempt: int = 1,
+    ) -> tuple[bool, float, float]:
         est = round(float(unit_price) * float(quantity), 6)
         with _LOCK:
             cumulative = self._total_unlocked()
             if cumulative + est > self.max_usd + 1e-9:
                 return False, cumulative, est
             row = {
-                "kind": "estimate", "batch": self.batch, "attempt": attempt,
-                "ts": _now(), "step": step, "endpoint": endpoint,
-                "unit_price_usd": float(unit_price), "unit": unit,
-                "quantity": float(quantity), "est_usd": est,
+                "kind": "estimate",
+                "batch": self.batch,
+                "attempt": attempt,
+                "ts": _now(),
+                "step": step,
+                "endpoint": endpoint,
+                "unit_price_usd": float(unit_price),
+                "unit": unit,
+                "quantity": float(quantity),
+                "est_usd": est,
                 "cumulative_est_usd": round(cumulative + est, 6),
             }
             self._append(row)
             return True, cumulative, est
 
-    def record_result(self, step, endpoint, attempt, request_id, success,
-                      output_path=None, error=None, api_called=True) -> None:
+    def record_result(
+        self,
+        step,
+        endpoint,
+        attempt,
+        request_id,
+        success,
+        output_path=None,
+        error=None,
+        api_called=True,
+    ) -> None:
         row = {
-            "kind": "result", "batch": self.batch, "attempt": attempt,
-            "ts": _now(), "step": step, "endpoint": endpoint,
-            "request_id": request_id, "success": bool(success),
+            "kind": "result",
+            "batch": self.batch,
+            "attempt": attempt,
+            "ts": _now(),
+            "step": step,
+            "endpoint": endpoint,
+            "request_id": request_id,
+            "success": bool(success),
             "api_called": bool(api_called),
         }
         if output_path is not None:

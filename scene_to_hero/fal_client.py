@@ -16,7 +16,7 @@ class MissingApiKey(RuntimeError):
 def get_api_key(env=os.environ) -> str:
     key = env.get("FAL_KEY", "")
     if not key:
-        raise MissingApiKey("環境変数 FAL_KEY を設定してください")
+        raise MissingApiKey("set the FAL_KEY environment variable")
     return key
 
 
@@ -48,7 +48,9 @@ def _find_url(value):
 
 
 class FalClient:
-    def __init__(self, key: str, transport=None, sleep=time.sleep, poll_seconds=5, timeout_seconds=900):
+    def __init__(
+        self, key: str, transport=None, sleep=time.sleep, poll_seconds=5, timeout_seconds=900
+    ):
         self.key = key
         self.transport = transport or _http_transport
         self.sleep = sleep
@@ -100,13 +102,17 @@ class FalClient:
         output_path.parent.mkdir(parents=True, exist_ok=True)
         with output_path.open("xb") as stream:
             stream.write(data)
-        return {"request_id": request_id, "output_url_host": urllib.parse.urlparse(output_url).netloc}
+        return {
+            "request_id": request_id,
+            "output_url_host": urllib.parse.urlparse(output_url).netloc,
+        }
 
     def upload_file(self, path: Path) -> str:
         path = Path(path)
         content_type = "image/png" if path.suffix.lower() == ".png" else "image/jpeg"
         initiate = self._request(
-            "POST", "https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3",
+            "POST",
+            "https://rest.fal.ai/storage/upload/initiate?storage_type=fal-cdn-v3",
             json.dumps({"file_name": path.name, "content_type": content_type}).encode("utf-8"),
         )
         details = _json(initiate)
