@@ -10,6 +10,7 @@ from .converge import contact_sheet, converge
 from .fal_client import FalClient, MissingApiKey, get_api_key
 from .generate import GenerateParams, build_prompt, estimate, generate
 from .project import Project, load, project_dir, save, scan_scenes
+from .serve import run as serve_project
 
 
 def _parser():
@@ -47,6 +48,11 @@ def _parser():
     conv.add_argument("--preset", default="medium")
     conv.add_argument("--out")
     conv.add_argument("--overwrite", action="store_true")
+    ui = sub.add_parser("ui")
+    ui.add_argument("name")
+    ui.add_argument("--root")
+    ui.add_argument("--port", type=int, default=0)
+    ui.add_argument("--host", default="127.0.0.1")
     for name in ("interview", "finish", "upscale", "review", "export"):
         sub.add_parser(name)
     return parser
@@ -198,6 +204,12 @@ def _converge(args):
     return 0
 
 
+def _ui(args):
+    directory = project_dir(args.name, args.root)
+    load(directory / "project.json")
+    return serve_project(directory, args.host, args.port)
+
+
 def main(argv=None) -> int:
     parser = _parser()
     try:
@@ -213,6 +225,8 @@ def main(argv=None) -> int:
             return _generate(args)
         if args.command == "converge":
             return _converge(args)
+        if args.command == "ui":
+            return _ui(args)
         if args.command in {"interview", "finish", "upscale", "review", "export"}:
             print("not implemented yet", file=sys.stderr)
             return 2

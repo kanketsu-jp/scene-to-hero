@@ -62,6 +62,15 @@
     return JSON.stringify(ordered, null, 2) + "\n";
   }
 
+  function defaultProjectUrl(search, served) {
+    const project = new URLSearchParams(search).get("project");
+    return project || (served ? "/project/project.json" : null);
+  }
+
+  function saveRequest(original, scenes) {
+    return { url: "/api/project", init: { method: "PUT", headers: { "Content-Type": "application/json" }, body: serializeProject(original, scenes) } };
+  }
+
   function resolveSceneUrl(projectUrl, scenePath, baseHref) {
     if (typeof scenePath !== "string" || scenePath.startsWith("/") || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(scenePath) || scenePath.split("/").includes("..")) return null;
     try { return new URL(scenePath, new URL(projectUrl, baseHref)).href; } catch (_) { return null; }
@@ -76,7 +85,7 @@
     return output;
   }
 
-  const SceneUI = { parseProject, validateProject, sortedScenes, moveScene, moveSceneBy, setImportance, setNote, setFinal, serializeProject, resolveSceneUrl, matchImageFiles };
+  const SceneUI = { parseProject, validateProject, sortedScenes, moveScene, moveSceneBy, setImportance, setNote, setFinal, serializeProject, defaultProjectUrl, saveRequest, resolveSceneUrl, matchImageFiles };
   global.SceneUI = SceneUI;
   if (typeof module !== "undefined" && module.exports) module.exports = SceneUI;
 })(globalThis);

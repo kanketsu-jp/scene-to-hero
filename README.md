@@ -32,7 +32,7 @@ The default output is `<root>/<project>/` (including when `--root` is specified)
 
 The CLI and UI preserve unknown project and scene keys.
 
-The UI can be used by opening `ui/index.html` with `file://` and selecting a project.json and its images, or by running `python3 -m http.server` at the repository root and opening `ui/index.html?project=<relative project.json path>`. Use drag-and-drop or Up/Down, edit importance, final, and note, then validate and download; save the downloaded `project.json` over the original. Test it with `node --test ui/` (not needed where Node is unavailable).
+The normal UI command is `scene-to-hero ui demo`; it serves the project and saves edits directly. It can also be used by opening `scene_to_hero/ui/index.html` with `file://` and selecting a project.json and its images, or by running `python3 -m http.server` at the repository root and opening `scene_to_hero/ui/index.html?project=<relative project.json path>`. Use drag-and-drop or Up/Down, edit importance, final, and note, then validate and download; save the downloaded `project.json` over the original. Test it with `node --test scene_to_hero/ui/` (not needed where Node is unavailable).
 
 Exit codes: 0 success, 1 runtime error, 2 unimplemented subcommand, 3 budget exceeded.
 
@@ -62,4 +62,4 @@ MIT.
 
 シーン画像を用意し、対話でナレッジを作り、UI または CLI で順番・重要度・最終画像を決めてから生成します。中間画像は雰囲気の参考にし、最終画像だけを固定して逆再生で収束させます。後続工程は未実装です。
 
-UI は `ui/index.html` を開き、project.json と画像を選んで編集・保存します。
+UI は `scene_to_hero/ui/index.html` を開き、project.json と画像を選んで編集・保存します。

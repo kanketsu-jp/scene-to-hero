@@ -63,6 +63,7 @@
         <label>Project <input id="json" type="file" accept=".json,application/json"></label>
         <label>Images <input id="images" type="file" multiple accept="image/*"></label>
         <button id="download" type="button" disabled>Download project.json</button>
+        <button id="save" type="button" disabled hidden>Save</button>
       </div>
       <p class="hint">After downloading, save the file over the project's project.json.</p>
       <section id="messages" class="messages" aria-live="polite"></section>
@@ -76,6 +77,9 @@
         const grid = document.querySelector('#grid');
         const messages = document.querySelector('#messages');
         const download = document.querySelector('#download');
+        const save = document.querySelector('#save');
+        let projectUrl = null;
+        let served = false;
 
         function show() {
           messages.textContent = '';
@@ -97,10 +101,10 @@
             messages.append(warning);
           }
           download.disabled = validation.errors.length > 0;
+          save.disabled = validation.errors.length > 0;
         }
 
         function imageFor(scene) {
-          const projectUrl = new URLSearchParams(location.search).get('project');
           if (projectUrl) return U.resolveSceneUrl(projectUrl, scene.path, location.href);
           const file = U.matchImageFiles([scene], state.files)[scene.id];
           if (!file) return null;
@@ -228,9 +232,32 @@
           setTimeout(() => URL.revokeObjectURL(link.href), 0);
         };
 
-        const projectUrl = new URLSearchParams(location.search).get('project');
-        if (projectUrl) {
-          fetch(projectUrl).then((response) => {
+        save.onclick = async () => {
+          try {
+            const request = U.saveRequest(state.project, state.scenes);
+            const response = await fetch(request.url, request.init);
+            if (!response.ok) throw Error(await response.text());
+            messages.textContent = 'Saved';
+            messages.className = 'messages hint';
+          } catch (error) {
+            messages.textContent = error.message;
+            messages.className = 'messages error';
+          }
+        };
+
+        async function loadProject() {
+          if (location.protocol === 'http:' || location.protocol === 'https:') {
+            try {
+              const response = await fetch('/api/project');
+              served = response.ok;
+            } catch (_) {
+              served = false;
+            }
+          }
+          projectUrl = U.defaultProjectUrl(location.search, served);
+          save.hidden = !served;
+          if (projectUrl) {
+            return fetch(projectUrl).then((response) => {
             if (!response.ok) throw Error(`Could not load project: ${response.status}`);
             return response.text();
           }).then((text) => {
@@ -241,7 +268,9 @@
             messages.textContent = error.message;
             download.disabled = true;
           });
+          }
         }
+        loadProject();
       })();
     </script>
   </body>
