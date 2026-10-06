@@ -30,6 +30,58 @@ def test_cli_init_order_dry_run(tmp_path, monkeypatch, capsys):
     assert not (tmp_path / "home" / "demo" / "clips").exists()
 
 
+def test_init_rejects_dotdot_without_creating_project(tmp_path):
+    source = tmp_path / "input"
+    source.mkdir()
+    Image.new("RGB", (2, 2)).save(source / "one.png")
+    root = tmp_path / "home"
+    assert main(["init", "..", "--root", str(root), "--scenes", str(source)]) == 1
+    assert not root.exists()
+
+
+def test_cli_scene_symlink_is_rejected_before_image_access(tmp_path, monkeypatch, capsys):
+    root = tmp_path / "root"
+    directory = root / "demo"
+    (directory / "scenes").mkdir(parents=True)
+    outside = tmp_path / "outside.png"
+    Image.new("RGB", (2, 2)).save(outside)
+    (directory / "scenes" / "link.png").symlink_to(outside)
+    save(
+        Project("demo", [Scene("final", "scenes/link.png", 0, role="final")], {}),
+        directory / "project.json",
+    )
+    monkeypatch.setattr(
+        "scene_to_hero.generate._data_uri",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("outside file opened")),
+    )
+    monkeypatch.setattr(
+        "scene_to_hero.cli.converge",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("converge was called")),
+    )
+    monkeypatch.setattr(
+        "scene_to_hero.cli.finish",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("finish was called")),
+    )
+
+    assert main(["generate", "demo", "--root", str(root), "--prompt", "test", "--dry-run"]) == 1
+    assert main(["converge", "demo", "--root", str(root), "--video", "missing.mp4"]) == 1
+    assert (
+        main(
+            [
+                "finish",
+                "demo",
+                "--root",
+                str(root),
+                "--video",
+                "missing.mp4",
+                "--switch-final",
+            ]
+        )
+        == 1
+    )
+    assert capsys.readouterr().err.count("inside the project") == 3
+
+
 def test_generate_name_helper(tmp_path):
     (tmp_path / "hero-001.mp4").touch()
     assert _next_generate_name(tmp_path) == "hero-002"

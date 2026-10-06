@@ -1,9 +1,27 @@
 import json
+import os
+import re
+from pathlib import Path
 
 import pytest
 from PIL import Image
 
-from scene_to_hero.project import Project, Scene, default_root, load, project_dir, save, scan_scenes
+from scene_to_hero.project import (
+    Project,
+    Scene,
+    default_root,
+    load,
+    project_dir,
+    resolve_scene_path,
+    save,
+    scan_scenes,
+    validate_scene_path,
+)
+
+_LOGIC = Path(__file__).parents[1] / "scene_to_hero" / "ui" / "logic.js"
+_VECTORS = json.loads(
+    re.search(r"const scenePathVectors = (\{.*?\});", _LOGIC.read_text(), re.DOTALL).group(1)
+)
 
 
 def test_roundtrip_and_scan(tmp_path):
@@ -46,6 +64,33 @@ def test_name_and_home(tmp_path, monkeypatch):
     monkeypatch.setenv("SCENE_TO_HERO_HOME", str(tmp_path))
     assert default_root() == tmp_path
     assert project_dir("demo", tmp_path / "demo") == tmp_path / "demo" / "demo"
+    for name in (".", ".."):
+        with pytest.raises(ValueError):
+            project_dir(name, tmp_path)
+        with pytest.raises(ValueError):
+            Project(name, [], {}).validate()
+
+
+@pytest.mark.parametrize("path", _VECTORS["reject"])
+def test_scene_path_rejected(path):
+    with pytest.raises(ValueError):
+        validate_scene_path(path)
+
+
+@pytest.mark.parametrize("path", _VECTORS["accept"])
+def test_scene_path_accepted(path):
+    assert validate_scene_path(path) == path
+
+
+def test_resolve_scene_path_rejects_symlink_outside(tmp_path):
+    directory = tmp_path / "project"
+    scenes = directory / "scenes"
+    scenes.mkdir(parents=True)
+    outside = tmp_path / "outside.png"
+    Image.new("RGB", (2, 2)).save(outside)
+    os.symlink(outside, scenes / "link.png")
+    with pytest.raises(ValueError, match="inside the project"):
+        resolve_scene_path(directory, "scenes/link.png")
 
 
 def test_unknown_keys_roundtrip_and_known_json_stays_unchanged(tmp_path):

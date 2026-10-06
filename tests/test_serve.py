@@ -101,12 +101,18 @@ def test_ranges_and_head(running_server):
 
 
 def test_traversal_and_host_guard(running_server, tmp_path):
-    _, base, _ = running_server
+    directory, base, _ = running_server
+    (directory / "outside-link.txt").symlink_to(tmp_path / "secret.txt")
     port = int(base.rsplit(":", 1)[1])
     for path in (
         "/project/../secret.txt",
         "/project/%2e%2e/secret.txt",
         "/project/..%2fsecret.txt",
+        "/project/..%2f..%2fx",
+        "/project//etc/hosts",
+        "/project/outside-link.txt",
+        "/project/%00x",
+        "/project/" + "a" * 5000,
     ):
         conn = http.client.HTTPConnection("127.0.0.1", port)
         conn.request("GET", path)
@@ -185,6 +191,111 @@ def test_save_and_rejections(running_server):
         )
         assert (directory / "project.json").read_bytes() == before
     assert request(base, "/api/project", method="POST")[0] == 405
+
+
+def test_put_rejects_absolute_scene_path(running_server):
+    directory, base, original = running_server
+    before = (directory / "project.json").read_bytes()
+    sent = json.loads(json.dumps(original))
+    sent["scenes"][0]["path"] = "/etc/hosts"
+    body = json.dumps(sent).encode()
+    assert (
+        request(
+            base,
+            "/api/project",
+            method="PUT",
+            body=body,
+            headers={"Content-Type": "application/json"},
+        )[0]
+        == 400
+    )
+    assert (directory / "project.json").read_bytes() == before
+
+
+def test_put_origin_and_fetch_site_guards(running_server):
+    directory, base, original = running_server
+    body = json.dumps(original).encode()
+    before = (directory / "project.json").read_bytes()
+    headers = {"Content-Type": "application/json", "Content-Length": str(len(body))}
+    assert (
+        request(
+            base,
+            "/api/project",
+            method="PUT",
+            body=body,
+            headers={**headers, "Origin": "https://attacker.example"},
+        )[0]
+        == 403
+    )
+    assert (
+        request(
+            base, "/api/project", method="PUT", body=body, headers={**headers, "Origin": "null"}
+        )[0]
+        == 403
+    )
+    assert (
+        request(
+            base,
+            "/api/project",
+            method="PUT",
+            body=body,
+            headers={**headers, "Sec-Fetch-Site": "cross-site"},
+        )[0]
+        == 403
+    )
+    assert (directory / "project.json").read_bytes() == before
+    host = base.removeprefix("http://")
+    assert (
+        request(
+            base,
+            "/api/project",
+            method="PUT",
+            body=body,
+            headers={**headers, "Origin": f"http://{host}"},
+        )[0]
+        == 200
+    )
+    assert request(base, "/api/project", method="PUT", body=body, headers=headers)[0] == 200
+    assert (
+        request(
+            base,
+            "/api/project",
+            method="PUT",
+            body=body,
+            headers={**headers, "Origin": f"http://127.0.0.1:{int(host.rsplit(':', 1)[1]) + 1}"},
+        )[0]
+        == 403
+    )
+
+
+def test_put_origin_behind_proxy(tmp_path):
+    directory = tmp_path / "demo"
+    directory.mkdir()
+    data = {"name": "demo", "scenes": []}
+    body = json.dumps(data).encode()
+    (directory / "project.json").write_bytes(body + b"\n")
+    server = make_server(directory, port=0, allowed_hosts=("proxy.example",))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    try:
+        assert (
+            request(
+                f"http://127.0.0.1:{port}",
+                "/api/project",
+                method="PUT",
+                body=body,
+                headers={
+                    "Host": "proxy.example",
+                    "Origin": "https://proxy.example",
+                    "Content-Type": "application/json",
+                },
+            )[0]
+            == 200
+        )
+    finally:
+        server.shutdown()
+        server.server_close()
 
 
 def test_oversize_is_rejected(running_server):

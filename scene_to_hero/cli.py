@@ -12,7 +12,15 @@ from .converge import contact_sheet, converge
 from .fal_client import FalClient, MissingApiKey, get_api_key
 from .finish import IntroBlur, finish
 from .generate import GenerateParams, build_prompt, estimate, generate
-from .project import Project, load, project_dir, save, scan_scenes
+from .project import (
+    Project,
+    load,
+    project_dir,
+    resolve_scene_path,
+    save,
+    scan_scenes,
+    validate_scene_path,
+)
 
 
 def _parser():
@@ -87,9 +95,16 @@ def _init(args):
     if directory.exists():
         raise ValueError("project already exists")
     source = Path(args.scenes)
+    scanned = scan_scenes(source)
+    scenes = []
+    for scene in scanned:
+        item = source / scene.path
+        if item.is_symlink():
+            continue
+        validate_scene_path(f"scenes/{scene.path}")
+        scenes.append(scene)
     scenes_dir = directory / "scenes"
     scenes_dir.mkdir(parents=True)
-    scenes = scan_scenes(source)
     for scene in scenes:
         shutil.copy2(source / scene.path, scenes_dir / scene.path)
         scene.path = f"scenes/{scene.path}"
@@ -159,10 +174,11 @@ def _generate(args):
         raise ValueError(
             "no final scene is set; run: scene-to-hero order <name> --final <scene-id>"
         )
+    final_path = resolve_scene_path(directory, final.path)
     prompt = _prompt(project, args)
     output_name = args.output_name or _next_generate_name(directory)
     params = GenerateParams(
-        directory / final.path,
+        final_path,
         prompt,
         directory,
         output_name,
@@ -199,10 +215,10 @@ def _converge(args):
         raise ValueError(
             "no final scene is set; run: scene-to-hero order <name> --final <scene-id>"
         )
+    final_path = resolve_scene_path(directory, final.path)
     video = Path(args.video)
     output = Path(args.out) if args.out else directory / "converged" / f"{video.stem}_converged.mp4"
     sheet = output.with_name(f"{video.stem}_sheet.jpg")
-    final_path = directory / final.path
     result = converge(
         video, final_path, output, frames=args.frames, preset=args.preset, overwrite=args.overwrite
     )
@@ -243,7 +259,7 @@ def _finish(args):
             raise ValueError(
                 "no final scene is set; run: scene-to-hero order <name> --final <scene-id>"
             )
-        switch_image = directory / final.path
+        switch_image = resolve_scene_path(directory, final.path)
     video = Path(args.video)
     output = Path(args.out) if args.out else directory / "finished" / f"{video.stem}_finished.mp4"
     intro_blur = (

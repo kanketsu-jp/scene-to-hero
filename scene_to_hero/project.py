@@ -8,6 +8,8 @@ from pathlib import Path
 
 SCHEMA_VERSION = 1
 _NAME = re.compile(r"^[A-Za-z0-9._-]+$")
+_DRIVE = re.compile(r"^[A-Za-z]:")
+_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".webp"}
 
 
 @dataclass
@@ -34,10 +36,7 @@ class Project:
         return finals[0] if finals else None
 
     def validate(self) -> None:
-        if not _NAME.fullmatch(self.name):
-            raise ValueError(
-                "project name must contain only letters, numbers, dot, underscore, or hyphen"
-            )
+        validate_name(self.name)
         ids = [scene.id for scene in self.scenes]
         orders = [scene.order for scene in self.scenes]
         if len(ids) != len(set(ids)):
@@ -45,6 +44,7 @@ class Project:
         if len(orders) != len(set(orders)):
             raise ValueError("scene orders must be unique")
         for scene in self.scenes:
+            validate_scene_path(scene.path)
             if (
                 isinstance(scene.importance, bool)
                 or not isinstance(scene.importance, int)
@@ -101,14 +101,54 @@ class Project:
         return project
 
 
+def validate_name(name: str) -> str:
+    if not isinstance(name, str) or not _NAME.fullmatch(name) or name in {".", ".."}:
+        raise ValueError(
+            "project name must contain only letters, numbers, dot, underscore, or hyphen and not be . or .."
+        )
+    return name
+
+
+def validate_scene_path(path: str) -> str:
+    if not isinstance(path, str):
+        raise ValueError("scene path must be a string")  # noqa: TRY004
+    if any(ord(character) < 0x20 for character in path):
+        raise ValueError("scene path must not contain control characters")
+    if not path:
+        raise ValueError("scene path must not be empty")
+    if "\\" in path:
+        raise ValueError("scene path must use relative POSIX separators")
+    if path.startswith("/") or _DRIVE.match(path):
+        raise ValueError("scene path must be relative to the project")
+    segments = path.split("/")
+    if ".." in segments:
+        raise ValueError("scene path must not contain .. segments")
+    if not any(segment not in {"", "."} for segment in segments):
+        raise ValueError("scene path must contain a file name")
+    if Path(segments[-1]).suffix.lower() not in _IMAGE_SUFFIXES:
+        raise ValueError("scene path must have a .png, .jpg, .jpeg, or .webp suffix")
+    return path
+
+
 def default_root() -> Path:
     return Path(os.environ.get("SCENE_TO_HERO_HOME", Path.home() / "Downloads" / "scene-to-hero"))
 
 
 def project_dir(name, root=None) -> Path:
-    if not _NAME.fullmatch(name):
-        raise ValueError("invalid project name")
+    validate_name(name)
     return (Path(root) if root is not None else default_root()) / name
+
+
+def resolve_scene_path(project_dir: Path, scene_path: str) -> Path:
+    validate_scene_path(scene_path)
+    try:
+        root = Path(project_dir).resolve()
+        target = (root / scene_path).resolve()
+    except (OSError, ValueError) as exc:
+        raise ValueError("scene path could not be resolved inside the project") from exc
+    if target != root and root not in target.parents:
+        raise ValueError("scene path must resolve inside the project")
+    return target
 
 
 def load(path: Path) -> Project:

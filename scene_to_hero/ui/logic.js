@@ -1,6 +1,24 @@
 (function (global) {
   // Project fields preserved by the UI.
   const known = ["id", "path", "order", "importance", "role", "note"];
+  const scenePathVectors = {
+    "reject": [
+      "/etc/hosts", "../x.png", "scenes/../../x.png", "C:/x.png",
+      "\\\\srv\\x.png", "a\\b.png", "", ".", "scenes/", "project.json",
+      "\u0000x.png", "\t/x.png"
+    ],
+    "accept": ["scenes/a.png", "scenes/sub/b.jpg", "scenes/A.JPEG", "./scenes/a.webp"]
+  };
+  const sceneSuffix = /\.(png|jpg|jpeg|webp)$/i;
+  const namePattern = /^[A-Za-z0-9._-]+$/;
+
+  function hasControl(value) { return /[\u0000-\u001f]/.test(value); }
+
+  function isValidScenePath(path) {
+    if (typeof path !== "string" || hasControl(path) || !path || path.includes("\\") || path.startsWith("/") || /^[A-Za-z]:/.test(path)) return false;
+    const segments = path.split("/");
+    return !segments.includes("..") && segments.some((segment) => segment !== "" && segment !== ".") && sceneSuffix.test(segments[segments.length - 1]);
+  }
 
   function parseProject(text) {
     let project;
@@ -12,12 +30,13 @@
 
   function validateProject(project) {
     const errors = [], warnings = [];
-    if (!project || typeof project !== "object" || !/^[A-Za-z0-9._-]+$/.test(project.name || "")) errors.push("project name is invalid");
+    if (!project || typeof project !== "object" || typeof project.name !== "string" || !namePattern.test(project.name) || project.name === "." || project.name === "..") errors.push("project name is invalid");
     const scenes = Array.isArray(project && project.scenes) ? project.scenes : [];
     const ids = scenes.map((scene) => scene.id), orders = scenes.map((scene) => scene.order);
     if (new Set(ids).size !== ids.length) errors.push("scene ids must be unique");
     if (new Set(orders).size !== orders.length) errors.push("scene orders must be unique");
     scenes.forEach((scene) => {
+      if (!isValidScenePath(scene.path)) errors.push("scene path is invalid");
       if (!Number.isInteger(scene.importance) || scene.importance < 1 || scene.importance > 5) errors.push("importance must be an integer from 1 to 5");
       if (scene.role !== "final" && scene.role !== "reference") errors.push("scene role must be final or reference");
     });
@@ -62,9 +81,25 @@
     return JSON.stringify(ordered, null, 2) + "\n";
   }
 
+  function safeProjectUrl(value, baseHref) {
+    if (value === "") return { url: null, warning: null };
+    if (typeof value !== "string" || hasControl(value) || value.includes("\\") || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(value) || value.startsWith("//")) {
+      return { url: null, warning: "ignored ?project= from another origin" };
+    }
+    try {
+      const resolved = new URL(value, baseHref);
+      if (resolved.origin !== new URL(baseHref).origin) return { url: null, warning: "ignored ?project= from another origin" };
+      return { url: value, warning: null };
+    } catch (_) {
+      return { url: null, warning: "ignored ?project= from another origin" };
+    }
+  }
+
   function defaultProjectUrl(search, served) {
     const project = new URLSearchParams(search).get("project");
-    return project || (served ? "/project/project.json" : null);
+    const baseHref = typeof global.location === "object" && global.location.href ? global.location.href : "http://localhost/";
+    const safe = safeProjectUrl(project === null ? "" : project, baseHref);
+    return { url: safe.url || (served ? "/project/project.json" : null), warning: safe.warning };
   }
 
   function saveRequest(original, scenes) {
@@ -72,8 +107,18 @@
   }
 
   function resolveSceneUrl(projectUrl, scenePath, baseHref) {
-    if (typeof scenePath !== "string" || scenePath.startsWith("/") || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(scenePath) || scenePath.split("/").includes("..")) return null;
-    try { return new URL(scenePath, new URL(projectUrl, baseHref)).href; } catch (_) { return null; }
+    if (typeof scenePath !== "string") return null;
+    let hasParentSegment = false;
+    try { hasParentSegment = scenePath.split("/").some((segment) => decodeURIComponent(segment) === ".."); } catch (_) { hasParentSegment = true; }
+    if (hasControl(scenePath) || scenePath.includes("\\") || scenePath.startsWith("/") || /^[A-Za-z][A-Za-z0-9+.-]*:/.test(scenePath) || hasParentSegment) return null;
+    try {
+      const base = new URL(baseHref);
+      const project = new URL(projectUrl, base);
+      const resolved = new URL(scenePath, project);
+      const directory = project.pathname.replace(/[^/]*$/, "");
+      if (resolved.origin !== base.origin || !resolved.pathname.startsWith(directory)) return null;
+      return resolved.href;
+    } catch (_) { return null; }
   }
 
   function matchImageFiles(scenes, files) {
@@ -85,7 +130,7 @@
     return output;
   }
 
-  const SceneUI = { parseProject, validateProject, sortedScenes, moveScene, moveSceneBy, setImportance, setNote, setFinal, serializeProject, defaultProjectUrl, saveRequest, resolveSceneUrl, matchImageFiles };
+  const SceneUI = { parseProject, validateProject, sortedScenes, moveScene, moveSceneBy, setImportance, setNote, setFinal, serializeProject, defaultProjectUrl, safeProjectUrl, saveRequest, resolveSceneUrl, matchImageFiles, scenePathVectors };
   global.SceneUI = SceneUI;
   if (typeof module !== "undefined" && module.exports) module.exports = SceneUI;
 })(globalThis);

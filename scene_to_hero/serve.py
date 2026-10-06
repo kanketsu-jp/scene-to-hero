@@ -54,6 +54,58 @@ def _host_allowed(
     )
 
 
+def _netloc_parts(value: str) -> tuple[str, int | None] | None:
+    value = value.lower()
+    if not value or "@" in value:
+        return None
+    if value.startswith("["):
+        end = value.find("]")
+        if end < 0:
+            return None
+        host = value[: end + 1]
+        suffix = value[end + 1 :]
+        if suffix and not suffix.startswith(":"):
+            return None
+        port_text = suffix[1:] if suffix else ""
+    else:
+        if value.count(":") > 1:
+            return None
+        host, separator, port_text = value.partition(":")
+        if not separator:
+            port_text = ""
+    if not host:
+        return None
+    if not port_text:
+        return host, None
+    if not port_text.isdigit() or int(port_text) > 65535:
+        return None
+    return host, int(port_text)
+
+
+def _origin_matches_host(origin: str, host: str | None) -> bool:
+    if origin.lower() == "null" or host is None:
+        return False
+    try:
+        parsed = urlsplit(origin)
+        if parsed.scheme.lower() not in {"http", "https"} or "@" in parsed.netloc:
+            return False
+        origin_parts = _netloc_parts(parsed.netloc)
+        host_parts = _netloc_parts(host.strip())
+        if origin_parts is None or host_parts is None or origin_parts[0] != host_parts[0]:
+            return False
+    except ValueError:
+        return False
+    origin_port, host_port = origin_parts[1], host_parts[1]
+    default_port = 443 if parsed.scheme.lower() == "https" else 80
+    if origin_port is None and host_port is None:
+        return True
+    if origin_port is None:
+        return host_port == default_port
+    if host_port is None:
+        return origin_port == default_port
+    return origin_port == host_port
+
+
 def _content_type(path: Path) -> str:
     if path.suffix.lower() == ".mp4":
         return "video/mp4"
@@ -114,9 +166,13 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         return False
 
     def _file_response(self, target: Path) -> None:
+        stream = None
         try:
+            stream = target.open("rb")
             size = target.stat().st_size
         except OSError:
+            if stream is not None:
+                stream.close()
             self._send_text(404, "not found")
             return
         byte_range = _byte_range(self.headers.get("Range"), size)
@@ -150,8 +206,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self.send_header("Content-Range", f"bytes {start}-{end}/{size}")
         self.end_headers()
         if self.command == "HEAD":
+            stream.close()
             return
-        with target.open("rb") as stream:
+        try:
             stream.seek(start)
             remaining = length
             while remaining:
@@ -160,19 +217,36 @@ class _Handler(http.server.BaseHTTPRequestHandler):
                     break
                 self.wfile.write(chunk)
                 remaining -= len(chunk)
+        except OSError:
+            return
+        finally:
+            stream.close()
 
     def _static(self, root: Path, relative: str, *, ui: bool = False) -> None:
         decoded = unquote(relative)
-        target = (root / decoded).resolve()
-        if not _is_inside(root.resolve(), target) or (ui and target.parent != root.resolve()):
+        try:
+            resolved_root = root.resolve()
+            target = (root / decoded).resolve()
+            inside = _is_inside(resolved_root, target)
+            is_directory = target.is_dir()
+            is_file = target.is_file()
+        except (ValueError, OSError):
             self._send_text(404, "not found")
             return
-        if target.is_dir() or not target.is_file():
+        if not inside or (ui and target.parent != resolved_root) or is_directory or not is_file:
             self._send_text(404, "not found")
             return
         self._file_response(target)
 
     def _put_project(self) -> None:
+        origin = self.headers.get("Origin")
+        if origin is not None and not _origin_matches_host(origin, self.headers.get("Host")):
+            self._send_text(403, "forbidden", close=True)
+            return
+        fetch_site = self.headers.get("Sec-Fetch-Site", "").lower()
+        if fetch_site in {"cross-site", "same-site"}:
+            self._send_text(403, "forbidden", close=True)
+            return
         content_type = self.headers.get("Content-Type", "")
         if not content_type.lower().startswith("application/json"):
             self._send_text(400, "Content-Type must be application/json")

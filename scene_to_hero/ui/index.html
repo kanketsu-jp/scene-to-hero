@@ -73,7 +73,7 @@
     <script>
       (() => {
         const U = globalThis.SceneUI;
-        const state = { project: null, scenes: [], files: [], urls: [] };
+        const state = { project: null, scenes: [], files: [], urls: [], projectWarning: null };
         const grid = document.querySelector('#grid');
         const messages = document.querySelector('#messages');
         const download = document.querySelector('#download');
@@ -83,8 +83,16 @@
 
         function show() {
           messages.textContent = '';
+          messages.className = 'messages';
+          if (state.projectWarning) {
+            const warning = document.createElement('div');
+            warning.className = 'warning';
+            warning.textContent = state.projectWarning;
+            messages.append(warning);
+          }
           if (!state.project) {
             download.disabled = true;
+            save.disabled = true;
             return;
           }
           const validation = U.validateProject(state.project);
@@ -234,6 +242,8 @@
 
         save.onclick = async () => {
           try {
+            const validation = U.validateProject(state.project);
+            if (validation.errors.length) throw Error(validation.errors.join(' '));
             const request = U.saveRequest(state.project, state.scenes);
             const response = await fetch(request.url, request.init);
             if (!response.ok) throw Error(await response.text());
@@ -254,7 +264,10 @@
               served = false;
             }
           }
-          projectUrl = U.defaultProjectUrl(location.search, served);
+          const selected = U.defaultProjectUrl(location.search, served);
+          projectUrl = selected.url;
+          state.projectWarning = selected.warning;
+          show();
           save.hidden = !served;
           if (projectUrl) {
             return fetch(projectUrl).then((response) => {
@@ -265,7 +278,11 @@
             state.scenes = state.project.scenes;
             render();
           }).catch((error) => {
-            messages.textContent = error.message;
+            show();
+            const failure = document.createElement('div');
+            failure.className = 'error';
+            failure.textContent = error.message;
+            messages.append(failure);
             download.disabled = true;
           });
           }

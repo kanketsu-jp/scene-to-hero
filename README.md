@@ -38,6 +38,10 @@ The normal UI command is `scene-to-hero ui demo`; it serves the project and save
 
 Exit codes: 0 success, 1 runtime error, 2 unimplemented subcommand, 3 budget exceeded.
 
+## Security notes
+
+The server binds to `127.0.0.1` by default. Use `--allow-host` only behind a proxy you control. Scene paths must be relative and resolve inside the project. The `/api/project` Origin check intentionally ignores the scheme so a TLS-terminating proxy can use an HTTPS public origin while the local server receives HTTP.
+
 The default estimate is ceil(4.2) seconds × $0.096 = $0.48; a failed retry can reserve up to $0.96. These are estimates, and the fal.ai dashboard is authoritative for actual charges. Unit prices can change; the model page is the source to re-check.
 
 ## Design notes
