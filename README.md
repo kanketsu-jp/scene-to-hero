@@ -6,7 +6,7 @@ scene-to-hero turns a set of scene stills into a short hero video that converges
 
 Prepare stills, create knowledge through the interview skill, set order and importance in the UI, choose the final still, and generate.
 
-Typical flow: `init` → `order` (or UI) → `generate --dry-run` → `generate` → `converge` → review the contact sheet. See [docs/converge.md](docs/converge.md).
+Typical flow: `init` → `order` (or UI) → `generate --dry-run` → `generate` → `converge` → `finish` → review the result. See [docs/converge.md](docs/converge.md) and [docs/finish.md](docs/finish.md). For a reverse proxy, use `ui demo --allow-host example.test`.
 
 Input images may be png, jpg, jpeg, or webp. Use the final image's aspect ratio as the target. The final image should be an effects-free version; file names are arbitrary.
 
@@ -26,6 +26,8 @@ scene-to-hero init demo --scenes ./stills
 scene-to-hero order demo --final scene-02
 scene-to-hero generate demo --prompt "A calm studio scene" --dry-run
 scene-to-hero generate demo --prompt-file prompt.txt --yes
+scene-to-hero finish demo --video ./candidate.mp4 --switch-final
+scene-to-hero ui demo --allow-host example.test
 ```
 
 The default output is `<root>/<project>/` (including when `--root` is specified). Set `SCENE_TO_HERO_HOME` to change the default root. A budget-over-limit generation stops with exit code 3 even when `FAL_KEY` is not set. The dry run prints billed seconds, price, estimate, existing total, and limit without requiring `FAL_KEY` or writing a ledger.
@@ -47,7 +49,7 @@ Intermediate stills remain atmosphere references; only the final still is fixed.
 | Feature | Status |
 |---|---|
 | converge | implemented |
-| finish | not implemented yet |
+| finish | implemented |
 | upscale | not implemented yet |
 | label_erase | not implemented yet |
 | review | not implemented yet |
@@ -60,6 +62,6 @@ MIT.
 
 ## 日本語
 
-シーン画像を用意し、対話でナレッジを作り、UI または CLI で順番・重要度・最終画像を決めてから生成します。中間画像は雰囲気の参考にし、最終画像だけを固定して逆再生で収束させます。後続工程は未実装です。
+シーン画像を用意し、対話でナレッジを作り、UI または CLI で順番・重要度・最終画像を決めてから生成します。中間画像は雰囲気の参考にし、最終画像だけを固定して逆再生で収束させます。収束後は `finish` でホールドや切り替え、イントロぼかしを適用できます。
 
 UI は `scene_to_hero/ui/index.html` を開き、project.json と画像を選んで編集・保存します。

@@ -43,11 +43,15 @@ def _hostname(header_value: str | None) -> str | None:
     return value.rsplit(":", 1)[0] if value.count(":") == 1 else value
 
 
-def _host_allowed(header_value: str | None, bound_host: str) -> bool:
+def _host_allowed(
+    header_value: str | None, bound_host: str, allowed_hosts: tuple[str, ...] = ()
+) -> bool:
     if not is_loopback(bound_host):
         return True
     hostname = _hostname(header_value)
-    return hostname in LOOPBACK_HOSTS
+    return hostname in LOOPBACK_HOSTS or (
+        hostname is not None and hostname.lower() in {host.lower() for host in allowed_hosts}
+    )
 
 
 def _content_type(path: Path) -> str:
@@ -102,7 +106,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
             self.wfile.write(body)
 
     def _allowed(self) -> bool:
-        if _host_allowed(self.headers.get("Host"), self.server.bound_host):
+        if _host_allowed(
+            self.headers.get("Host"), self.server.bound_host, self.server.allowed_hosts
+        ):
             return True
         self._send_text(403, "forbidden")
         return False
@@ -277,7 +283,9 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         )
 
 
-def make_server(project_dir, host="127.0.0.1", port=0) -> http.server.ThreadingHTTPServer:
+def make_server(
+    project_dir, host="127.0.0.1", port=0, allowed_hosts=()
+) -> http.server.ThreadingHTTPServer:
     root = Path(project_dir).resolve()
 
     class Server(http.server.ThreadingHTTPServer):
@@ -286,11 +294,12 @@ def make_server(project_dir, host="127.0.0.1", port=0) -> http.server.ThreadingH
     server = Server((host, port), _Handler)
     server.project_root = root
     server.bound_host = host
+    server.allowed_hosts = tuple(allowed_hosts)
     return server
 
 
-def run(project_dir, host="127.0.0.1", port=0) -> int:
-    server = make_server(project_dir, host, port)
+def run(project_dir, host="127.0.0.1", port=0, allowed_hosts=()) -> int:
+    server = make_server(project_dir, host, port, allowed_hosts)
     actual_port = server.server_address[1]
     print(f"http://{host}:{actual_port}/", flush=True)
     warning = exposure_warning(host)

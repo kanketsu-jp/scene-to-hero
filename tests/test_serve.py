@@ -117,6 +117,29 @@ def test_traversal_and_host_guard(running_server, tmp_path):
     assert request(base, "/api/project", headers={"Host": f"localhost:{port}"})[0] == 200
 
 
+def test_allowed_hosts(tmp_path):
+    directory = tmp_path / "demo"
+    directory.mkdir()
+    (directory / "project.json").write_text("{}", encoding="utf-8")
+    server = make_server(directory, port=0, allowed_hosts=("example.test",))
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    port = server.server_address[1]
+    try:
+        for host, expected in (
+            ("example.test", 200),
+            ("EXAMPLE.test:443", 200),
+            ("other.test", 403),
+        ):
+            conn = http.client.HTTPConnection("127.0.0.1", port)
+            conn.request("GET", "/api/project", headers={"Host": host})
+            assert conn.getresponse().status == expected
+            conn.close()
+    finally:
+        server.shutdown()
+        server.server_close()
+
+
 def test_save_and_rejections(running_server):
     directory, base, original = running_server
     previous = (directory / "project.json").read_bytes()

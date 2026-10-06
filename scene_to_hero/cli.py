@@ -2,15 +2,17 @@ from __future__ import annotations
 
 import argparse
 import shutil
+import subprocess
 import sys
 from pathlib import Path
 
+from . import serve
 from .budget import Budget, BudgetExceeded
 from .converge import contact_sheet, converge
 from .fal_client import FalClient, MissingApiKey, get_api_key
+from .finish import IntroBlur, finish
 from .generate import GenerateParams, build_prompt, estimate, generate
 from .project import Project, load, project_dir, save, scan_scenes
-from .serve import run as serve_project
 
 
 def _parser():
@@ -53,7 +55,24 @@ def _parser():
     ui.add_argument("--root")
     ui.add_argument("--port", type=int, default=0)
     ui.add_argument("--host", default="127.0.0.1")
-    for name in ("interview", "finish", "upscale", "review", "export"):
+    ui.add_argument("--allow-host", action="append", default=[])
+    finish_parser = sub.add_parser("finish")
+    finish_parser.add_argument("name")
+    finish_parser.add_argument("--root")
+    finish_parser.add_argument("--video", required=True)
+    finish_parser.add_argument("--hold-frames", type=int, default=0)
+    switch = finish_parser.add_mutually_exclusive_group()
+    switch.add_argument("--switch-image")
+    switch.add_argument("--switch-final", action="store_true")
+    finish_parser.add_argument("--intro-blur", type=float)
+    finish_parser.add_argument("--intro-hold", type=int, default=0)
+    finish_parser.add_argument("--intro-ramp", type=int, default=12)
+    finish_parser.add_argument(
+        "--intro-curve", choices=("smoothstep", "linear"), default="smoothstep"
+    )
+    finish_parser.add_argument("--out")
+    finish_parser.add_argument("--overwrite", action="store_true")
+    for name in ("interview", "upscale", "review", "export"):
         sub.add_parser(name)
     return parser
 
@@ -207,7 +226,51 @@ def _converge(args):
 def _ui(args):
     directory = project_dir(args.name, args.root)
     load(directory / "project.json")
-    return serve_project(directory, args.host, args.port)
+    if args.allow_host:
+        print(
+            f"allowing Host: {', '.join(args.allow_host)} (use only behind a proxy you control)",
+            file=sys.stderr,
+        )
+    return serve.run(directory, args.host, args.port, tuple(args.allow_host))
+
+
+def _finish(args):
+    directory, project = _project(args)
+    switch_image = args.switch_image
+    if args.switch_final:
+        final = project.final_scene()
+        if final is None:
+            raise ValueError(
+                "no final scene is set; run: scene-to-hero order <name> --final <scene-id>"
+            )
+        switch_image = directory / final.path
+    video = Path(args.video)
+    output = Path(args.out) if args.out else directory / "finished" / f"{video.stem}_finished.mp4"
+    intro_blur = (
+        None
+        if args.intro_blur is None
+        else IntroBlur(
+            args.intro_blur,
+            hold_frames=args.intro_hold,
+            ramp_frames=args.intro_ramp,
+            curve=args.intro_curve,
+        )
+    )
+    result = finish(
+        video,
+        output,
+        hold_frames=args.hold_frames,
+        switch_image=switch_image,
+        intro_blur=intro_blur,
+        overwrite=args.overwrite,
+    )
+    print(
+        f"input frames: {result.input_frame_count} -> output frames: {result.output_frame_count}; "
+        f"hold: {result.hold_frames}; switched: {'yes' if result.switched else 'no'}; "
+        f"intro blur frames: {result.intro_blur_frames}; output: {result.out_path}"
+    )
+    print("review the result by eye; numbers alone are not a pass")
+    return 0
 
 
 def main(argv=None) -> int:
@@ -227,12 +290,22 @@ def main(argv=None) -> int:
             return _converge(args)
         if args.command == "ui":
             return _ui(args)
-        if args.command in {"interview", "finish", "upscale", "review", "export"}:
+        if args.command == "finish":
+            return _finish(args)
+        if args.command in {"interview", "upscale", "review", "export"}:
             print("not implemented yet", file=sys.stderr)
             return 2
         parser.print_help()
         return 0
-    except (ValueError, FileNotFoundError, MissingApiKey, BudgetExceeded, RuntimeError) as exc:
+    except (
+        ValueError,
+        FileNotFoundError,
+        FileExistsError,
+        subprocess.CalledProcessError,
+        MissingApiKey,
+        BudgetExceeded,
+        RuntimeError,
+    ) as exc:
         print(str(exc), file=sys.stderr)
         return 3 if isinstance(exc, BudgetExceeded) else 1
 

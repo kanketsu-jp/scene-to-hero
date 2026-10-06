@@ -9,7 +9,7 @@ from scene_to_hero.project import Project, Scene, load, save
 
 def test_cli_help_and_unimplemented(capsys):
     assert main(["--help"]) == 0
-    assert main(["finish"]) == 2
+    assert main(["upscale"]) == 2
     assert "not implemented yet" in capsys.readouterr().err
 
 
@@ -33,6 +33,24 @@ def test_cli_init_order_dry_run(tmp_path, monkeypatch, capsys):
 def test_generate_name_helper(tmp_path):
     (tmp_path / "hero-001.mp4").touch()
     assert _next_generate_name(tmp_path) == "hero-002"
+
+
+def test_ui_allow_host_reaches_server(monkeypatch, tmp_path, capsys):
+    directory = tmp_path / "demo"
+    directory.mkdir()
+    save(Project("demo", [], {}), directory / "project.json")
+    seen = {}
+
+    def fake_run(project_dir, host, port, allowed_hosts):
+        seen.update(project_dir=project_dir, host=host, port=port, allowed_hosts=allowed_hosts)
+        return 0
+
+    monkeypatch.setattr("scene_to_hero.cli.serve.run", fake_run)
+    assert (
+        main(["ui", "demo", "--root", str(tmp_path), "--allow-host", "a", "--allow-host", "b"]) == 0
+    )
+    assert seen["allowed_hosts"] == ("a", "b")
+    assert "allowing Host: a, b" in capsys.readouterr().err
 
 
 def test_cli_converge_end_to_end(tmp_path, capsys):
