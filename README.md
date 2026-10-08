@@ -26,6 +26,9 @@ scene-to-hero init demo --scenes ./stills
 scene-to-hero order demo --final scene-02
 scene-to-hero generate demo --prompt "A calm studio scene" --dry-run
 scene-to-hero generate demo --prompt-file prompt.txt --yes
+scene-to-hero interview demo --answers answers.json --yes
+scene-to-hero interview demo --print
+scene-to-hero interview demo --answers answers.json
 scene-to-hero finish demo --video ./candidate.mp4 --switch-final
 scene-to-hero ui demo --allow-host example.test
 ```
@@ -58,7 +61,7 @@ Intermediate stills remain atmosphere references; only the final still is fixed.
 | label_erase | not implemented yet |
 | review | not implemented yet |
 | export | not implemented yet |
-| interview automation | not implemented yet |
+| interview | implemented |
 
 ## License
 
@@ -67,5 +70,6 @@ MIT.
 ## 日本語
 
 シーン画像を用意し、対話でナレッジを作り、UI または CLI で順番・重要度・最終画像を決めてから生成します。中間画像は雰囲気の参考にし、最終画像だけを固定して逆再生で収束させます。収束後は `finish` でホールドや切り替え、イントロぼかしを適用できます。
+`interview` はターミナルでナレッジを収集します。
 
 UI は `scene_to_hero/ui/index.html` を開き、project.json と画像を選んで編集・保存します。

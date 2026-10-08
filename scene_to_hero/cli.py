@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import shutil
 import subprocess
 import sys
@@ -12,6 +13,7 @@ from .converge import contact_sheet, converge
 from .fal_client import FalClient, MissingApiKey, get_api_key
 from .finish import IntroBlur, finish
 from .generate import GenerateParams, build_prompt, estimate, generate
+from .interview import run_interview
 from .project import (
     Project,
     load,
@@ -80,7 +82,13 @@ def _parser():
     )
     finish_parser.add_argument("--out")
     finish_parser.add_argument("--overwrite", action="store_true")
-    for name in ("interview", "upscale", "review", "export"):
+    interview = sub.add_parser("interview")
+    interview.add_argument("name")
+    interview.add_argument("--root")
+    interview.add_argument("--answers")
+    interview.add_argument("--print", dest="print_", action="store_true")
+    interview.add_argument("--yes", action="store_true")
+    for name in ("upscale", "review", "export"):
         sub.add_parser(name)
     return parser
 
@@ -289,10 +297,32 @@ def _finish(args):
     return 0
 
 
+def _interview(args):
+    directory, project = _project(args)
+    answers = None
+    if args.answers:
+        with Path(args.answers).open(encoding="utf-8") as stream:
+            answers = json.load(stream)
+    try:
+        result = run_interview(project, answers=answers, yes=args.yes, print_=args.print_)
+    except EOFError:
+        print("input ended; nothing was saved", file=sys.stderr)
+        return 1
+    if result:
+        return result
+    if args.print_:
+        return 0
+    save(project, directory / "project.json")
+    print(f"saved: {directory / 'project.json'}")
+    return 0
+
+
 def main(argv=None) -> int:
     parser = _parser()
     try:
         args = parser.parse_args(argv)
+        if args.command == "interview" and args.print_ and (args.answers or args.yes):
+            parser.error("interview --print cannot be combined with --answers or --yes")
     except SystemExit as exc:
         return int(exc.code)
     try:
@@ -308,7 +338,9 @@ def main(argv=None) -> int:
             return _ui(args)
         if args.command == "finish":
             return _finish(args)
-        if args.command in {"interview", "upscale", "review", "export"}:
+        if args.command == "interview":
+            return _interview(args)
+        if args.command in {"upscale", "review", "export"}:
             print("not implemented yet", file=sys.stderr)
             return 2
         parser.print_help()

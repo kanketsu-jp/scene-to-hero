@@ -7,15 +7,27 @@ description: Create project knowledge from scene stills through a short intervie
 
 ## Flow
 
-Use `init` to create a project, interview the user here, use the UI or `order` to set order, importance, and the final still, then run `generate`.
+Use `init` to create a project, interview the user here, use the UI or `order` to set order, importance, and the final still, then run `generate`. The same questions are available as `scene-to-hero interview <name>`.
 
 ## Subject questions
 
-Ask about shape, color, material and texture, size impression, printed surface or text and its exact content, orientation constraints such as facing front or not rotating, fragile parts such as thin or transparent pieces, and differences between individual objects when there are several.
+`shape` — What shape is the subject? (silhouette, proportions)
+`color` — What color is it?
+`material` — What material and surface texture does it have?
+`size` — How large does it look in the frame?
+`marking` — Is there printed text or a logo on it? Give the exact characters. They are drawn during video generation, never added afterward. Leave blank if there is none.
+`orientation` — Any orientation constraint? (for example always facing the camera, must not rotate)
+`fragile` — Any fragile parts that tend to break in generation? (thin, transparent, small)
+`differences` — If there are several objects, how do they differ from each other?
 
 ## Scenery questions
 
-Ask about background type, light direction and color temperature, moving elements such as cloth, smoke, or water, blurred foreground elements, effects to avoid such as flares, and the intended color treatment.
+`background` — What kind of background is it?
+`light` — Which direction does the light come from, and what color temperature?
+`motion` — Which elements move? (cloth, smoke, water)
+`foreground` — Any blurred foreground elements?
+`avoid` — Which effects must be avoided? (for example lens flares)
+`color_treatment` — What color treatment is intended?
 
 ## Save and prompt policy
 
